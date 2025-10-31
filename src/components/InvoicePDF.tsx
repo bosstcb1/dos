@@ -6,6 +6,7 @@ import { Share2, Download } from "lucide-react";
 export default function InvoicePDFShare() {
   const invoiceRef = useRef<HTMLDivElement>(null);
 
+  // --- Fonction de partage / téléchargement intelligent
   const handleShare = async () => {
     if (!invoiceRef.current) return;
 
@@ -16,10 +17,10 @@ export default function InvoicePDFShare() {
       color: { dark: "#195885", light: "#ffffff" },
     });
 
-    // --- Clone du contenu pour PDF (évite de modifier le DOM affiché)
+    // --- Clone du contenu pour éviter d’altérer le DOM original
     const clone = invoiceRef.current.cloneNode(true) as HTMLElement;
 
-    // --- Ajout du filigrane “PRO FORMA”
+    // --- Ajout d’un filigrane "PRO FORMA"
     const watermark = document.createElement("div");
     watermark.textContent = "PRO FORMA";
     Object.assign(watermark.style, {
@@ -37,14 +38,14 @@ export default function InvoicePDFShare() {
     clone.style.position = "relative";
     clone.appendChild(watermark);
 
-    // --- Ajout du QR code
+    // --- Ajout du QR code sur le document
     qrCanvas.style.position = "absolute";
     qrCanvas.style.bottom = "20px";
     qrCanvas.style.right = "20px";
     qrCanvas.style.opacity = "0.9";
     clone.appendChild(qrCanvas);
 
-    // --- Génération du PDF (Blob)
+    // --- Génération du PDF (en Blob)
     const pdfBlob = await html2pdf()
       .set({
         margin: 0.5,
@@ -54,11 +55,11 @@ export default function InvoicePDFShare() {
         jsPDF: { unit: "cm", format: "a4", orientation: "portrait" },
       })
       .from(clone)
-      .outputPdf("blob");
+      .output("blob"); // ✅ Correct : output() et non outputPdf()
 
     const file = new File([pdfBlob], "facture-proforma.pdf", { type: "application/pdf" });
 
-    // --- Partage via Web Share API
+    // --- Partage via Web Share API si compatible
     if (navigator.canShare && navigator.canShare({ files: [file] })) {
       await navigator.share({
         title: "Facture Pro Forma",
@@ -66,7 +67,7 @@ export default function InvoicePDFShare() {
         files: [file],
       });
     } else {
-      // Fallback : téléchargement automatique
+      // --- Téléchargement automatique si partage impossible
       const url = URL.createObjectURL(pdfBlob);
       const link = document.createElement("a");
       link.href = url;
@@ -75,6 +76,41 @@ export default function InvoicePDFShare() {
       URL.revokeObjectURL(url);
       alert("Le partage n’est pas supporté sur ce navigateur. Le fichier a été téléchargé.");
     }
+  };
+
+  // --- Téléchargement direct sans partage
+  const handleDownload = async () => {
+    if (!invoiceRef.current) return;
+
+    const clone = invoiceRef.current.cloneNode(true) as HTMLElement;
+
+    // --- Ajout du filigrane
+    const watermark = document.createElement("div");
+    watermark.textContent = "PRO FORMA";
+    Object.assign(watermark.style, {
+      position: "absolute",
+      top: "50%",
+      left: "50%",
+      transform: "translate(-50%, -50%) rotate(-30deg)",
+      fontSize: "110px",
+      fontWeight: "700",
+      color: "rgba(25, 88, 133, 0.08)",
+      pointerEvents: "none",
+      zIndex: "0",
+    });
+    clone.style.position = "relative";
+    clone.appendChild(watermark);
+
+    await html2pdf()
+      .set({
+        margin: 0.5,
+        filename: "facture-proforma.pdf",
+        image: { type: "jpeg", quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true },
+        jsPDF: { unit: "cm", format: "a4", orientation: "portrait" },
+      })
+      .from(clone)
+      .save();
   };
 
   return (
@@ -88,7 +124,7 @@ export default function InvoicePDFShare() {
         <div className="flex justify-between items-center border-b-4 border-[#195885] pb-6 mb-6">
           <div className="flex items-center">
             <img
-              src="https://i.imgur.com/lT8fSct.png" // ton logo ici
+              src="https://i.imgur.com/lT8fSct.png"
               alt="Logo"
               className="w-16 h-16 object-contain mr-3"
             />
@@ -97,9 +133,7 @@ export default function InvoicePDFShare() {
               <p className="text-sm text-gray-700">
                 Tous Travaux d’Affichage, Décoration, Sérigraphie et Fabrication de panneaux statiques
               </p>
-              <p className="text-sm text-gray-700 mt-1">
-                Tél : 01 96 34 64 35 / 01 94 14 52 69
-              </p>
+              <p className="text-sm text-gray-700 mt-1">Tél : 01 96 34 64 35 / 01 94 14 52 69</p>
               <p className="text-sm text-gray-700 mt-1">
                 N° CIP : 8382792325 — Expire le : 31/12/2025
               </p>
@@ -197,7 +231,7 @@ export default function InvoicePDFShare() {
         </button>
 
         <button
-          onClick={() => handleShare()}
+          onClick={handleDownload}
           className="flex items-center gap-2 bg-gray-200 text-gray-800 px-6 py-3 rounded-lg hover:bg-gray-300 transition-all"
         >
           <Download className="w-5 h-5" />
