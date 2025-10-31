@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
-import { ArrowLeft, Eye, Search, Trash2 } from 'lucide-react';
+import { ArrowLeft, Eye, Edit, Download, Search, Trash2 } from 'lucide-react';
 import { supabase, Invoice, CompanySettings } from '../lib/supabase';
 import InvoicePDF from './InvoicePDF';
 
 interface InvoicesListProps {
-  onNavigate: (page: string) => void;
+  onNavigate: (page: string, invoiceId?: string) => void;
 }
 
 export default function InvoicesList({ onNavigate }: InvoicesListProps) {
@@ -13,6 +13,7 @@ export default function InvoicesList({ onNavigate }: InvoicesListProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedInvoice, setSelectedInvoice] = useState<string | null>(null);
   const [settings, setSettings] = useState<CompanySettings | null>(null);
+  const [downloadingInvoice, setDownloadingInvoice] = useState<string | null>(null);
 
   useEffect(() => {
     loadInvoices();
@@ -74,6 +75,17 @@ export default function InvoicesList({ onNavigate }: InvoicesListProps) {
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
     return date.toLocaleDateString('fr-FR');
+  };
+
+  const handleDownload = async (invoiceId: string) => {
+    setDownloadingInvoice(invoiceId);
+    setTimeout(() => {
+      const link = document.createElement('a');
+      link.href = `/download/invoice/${invoiceId}`;
+      link.download = `facture-${invoiceId}.pdf`;
+      link.click();
+      setDownloadingInvoice(null);
+    }, 1000);
   };
 
   if (selectedInvoice && settings) {
@@ -156,14 +168,29 @@ export default function InvoicesList({ onNavigate }: InvoicesListProps) {
                         <div className="flex items-center justify-center space-x-3">
                           <button
                             onClick={() => setSelectedInvoice(invoice.id)}
-                            className="text-[#195885] hover:text-[#134266] transition-colors"
+                            className="text-[#195885] hover:text-[#134266]"
                             title="Voir"
                           >
                             <Eye className="w-5 h-5" />
                           </button>
                           <button
+                            onClick={() => onNavigate('edit-invoice', invoice.id)}
+                            className="text-blue-600 hover:text-blue-800"
+                            title="Modifier"
+                          >
+                            <Edit className="w-5 h-5" />
+                          </button>
+                          <button
+                            onClick={() => handleDownload(invoice.id)}
+                            className="text-green-600 hover:text-green-800"
+                            title="Télécharger"
+                            disabled={downloadingInvoice === invoice.id}
+                          >
+                            <Download className="w-5 h-5" />
+                          </button>
+                          <button
                             onClick={() => deleteInvoice(invoice.id)}
-                            className="text-red-600 hover:text-red-800 transition-colors"
+                            className="text-red-600 hover:text-red-800"
                             title="Supprimer"
                           >
                             <Trash2 className="w-5 h-5" />
