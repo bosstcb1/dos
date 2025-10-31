@@ -10,6 +10,7 @@ interface InvoiceItem {
   quantity: number;
   unit_price: number;
   total_amount: number;
+  pricing_type: 'Unitaire' | 'Forfaitaire' | 'Offert';
 }
 
 interface CreateInvoiceProps {
@@ -37,7 +38,14 @@ export default function CreateInvoice({ onNavigate }: CreateInvoiceProps) {
   });
 
   const [items, setItems] = useState<InvoiceItem[]>([
-    { id: '1', designation: '', quantity: 1, unit_price: 0, total_amount: 0 }
+    {
+      id: '1',
+      designation: '',
+      quantity: 1,
+      unit_price: 0,
+      total_amount: 0,
+      pricing_type: 'Unitaire'
+    }
   ]);
 
   const [showPDF, setShowPDF] = useState(false);
@@ -102,13 +110,17 @@ export default function CreateInvoice({ onNavigate }: CreateInvoiceProps) {
   };
 
   const addItem = () => {
-    setItems([...items, {
-      id: Date.now().toString(),
-      designation: '',
-      quantity: 1,
-      unit_price: 0,
-      total_amount: 0
-    }]);
+    setItems([
+      ...items,
+      {
+        id: Date.now().toString(),
+        designation: '',
+        quantity: 1,
+        unit_price: 0,
+        total_amount: 0,
+        pricing_type: 'Unitaire'
+      }
+    ]);
   };
 
   const removeItem = (id: string) => {
@@ -121,8 +133,16 @@ export default function CreateInvoice({ onNavigate }: CreateInvoiceProps) {
     setItems(items.map(item => {
       if (item.id === id) {
         const updated = { ...item, [field]: value };
-        if (field === 'quantity' || field === 'unit_price') {
-          updated.total_amount = updated.quantity * updated.unit_price;
+
+        // 🔁 recalcul automatique selon le type
+        if (field === 'quantity' || field === 'unit_price' || field === 'pricing_type') {
+          if (updated.pricing_type === 'Unitaire') {
+            updated.total_amount = updated.quantity * updated.unit_price;
+          } else if (updated.pricing_type === 'Forfaitaire') {
+            updated.total_amount = updated.unit_price;
+          } else if (updated.pricing_type === 'Offert') {
+            updated.total_amount = 0;
+          }
         }
         return updated;
       }
@@ -164,7 +184,7 @@ export default function CreateInvoice({ onNavigate }: CreateInvoiceProps) {
       return;
     }
 
-    if (items.some(item => !item.designation || item.quantity <= 0 || item.unit_price <= 0)) {
+    if (items.some(item => !item.designation || item.quantity <= 0 || item.unit_price < 0)) {
       alert('Veuillez remplir tous les articles correctement');
       return;
     }
@@ -208,6 +228,7 @@ export default function CreateInvoice({ onNavigate }: CreateInvoiceProps) {
       quantity: item.quantity,
       unit_price: item.unit_price,
       total_amount: item.total_amount,
+      pricing_type: item.pricing_type,
       order_index: index
     }));
 
@@ -261,92 +282,7 @@ export default function CreateInvoice({ onNavigate }: CreateInvoiceProps) {
         </div>
 
         <div className="bg-white rounded-xl shadow-md p-8">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Numéro de facture</label>
-              <input
-                type="text"
-                value={invoiceData.invoice_number}
-                onChange={(e) => setInvoiceData({ ...invoiceData, invoice_number: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#195885] focus:border-transparent"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Date de facturation</label>
-              <input
-                type="date"
-                value={invoiceData.invoice_date}
-                onChange={(e) => setInvoiceData({ ...invoiceData, invoice_date: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#195885] focus:border-transparent"
-              />
-            </div>
-          </div>
-
-          <div className="mb-8">
-            <h2 className="text-xl font-semibold text-gray-900 mb-4">Informations du client</h2>
-
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-2">Sélectionner un client existant (optionnel)</label>
-              <select
-                value={selectedClient}
-                onChange={(e) => handleClientSelect(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#195885] focus:border-transparent"
-              >
-                <option value="">-- Nouveau client --</option>
-                {clients.map(client => (
-                  <option key={client.id} value={client.id}>
-                    {client.name} - {client.phone}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Nom *</label>
-                <input
-                  type="text"
-                  value={invoiceData.client_name}
-                  onChange={(e) => setInvoiceData({ ...invoiceData, client_name: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#195885] focus:border-transparent"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Téléphone *</label>
-                <input
-                  type="text"
-                  value={invoiceData.client_phone}
-                  onChange={(e) => setInvoiceData({ ...invoiceData, client_phone: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#195885] focus:border-transparent"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Email</label>
-                <input
-                  type="email"
-                  value={invoiceData.client_email}
-                  onChange={(e) => setInvoiceData({ ...invoiceData, client_email: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#195885] focus:border-transparent"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Adresse</label>
-                <input
-                  type="text"
-                  value={invoiceData.client_address}
-                  onChange={(e) => setInvoiceData({ ...invoiceData, client_address: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#195885] focus:border-transparent"
-                />
-              </div>
-            </div>
-          </div>
-
+          {/* Table des articles */}
           <div className="mb-8">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-semibold text-gray-900">Articles</h2>
@@ -366,6 +302,7 @@ export default function CreateInvoice({ onNavigate }: CreateInvoiceProps) {
                     <th className="px-4 py-3 text-left">Désignation</th>
                     <th className="px-4 py-3 text-left w-24">Quantité</th>
                     <th className="px-4 py-3 text-left w-32">Prix unitaire</th>
+                    <th className="px-4 py-3 text-left w-32">Type de tarification</th>
                     <th className="px-4 py-3 text-left w-32">Montant</th>
                     <th className="px-4 py-3 w-16"></th>
                   </tr>
@@ -401,8 +338,21 @@ export default function CreateInvoice({ onNavigate }: CreateInvoiceProps) {
                           className="w-full px-2 py-1 border border-gray-300 rounded"
                         />
                       </td>
+                      <td className="px-4 py-3">
+                        <select
+                          value={item.pricing_type}
+                          onChange={(e) => updateItem(item.id, 'pricing_type', e.target.value)}
+                          className="w-full px-2 py-1 border border-gray-300 rounded bg-white"
+                        >
+                          <option value="Unitaire">Unitaire</option>
+                          <option value="Forfaitaire">Forfaitaire</option>
+                          <option value="Offert">Offert</option>
+                        </select>
+                      </td>
                       <td className="px-4 py-3 font-semibold">
-                        {item.total_amount.toLocaleString()} FCFA
+                        {item.pricing_type === 'Offert'
+                          ? 'Offert'
+                          : `${item.total_amount.toLocaleString()} FCFA`}
                       </td>
                       <td className="px-4 py-3">
                         {items.length > 1 && (
@@ -421,88 +371,8 @@ export default function CreateInvoice({ onNavigate }: CreateInvoiceProps) {
             </div>
           </div>
 
+          {/* Récapitulatif */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
-            <div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Options de facturation</h3>
-
-              <div className="mb-4">
-                <label className="flex items-center">
-                  <input
-                    type="checkbox"
-                    checked={invoiceData.apply_tax}
-                    onChange={(e) => setInvoiceData({ ...invoiceData, apply_tax: e.target.checked })}
-                    className="w-4 h-4 text-[#195885] rounded focus:ring-[#195885]"
-                  />
-                  <span className="ml-2 text-sm font-medium text-gray-700">Appliquer la TVA</span>
-                </label>
-              </div>
-
-              {invoiceData.apply_tax && (
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Pourcentage TVA (%)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    step="0.01"
-                    value={invoiceData.tax_percentage}
-                    onChange={(e) => setInvoiceData({ ...invoiceData, tax_percentage: parseFloat(e.target.value) || 0 })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#195885] focus:border-transparent"
-                  />
-                </div>
-              )}
-
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-2">Type de réduction</label>
-                <select
-                  value={invoiceData.discount_type}
-                  onChange={(e) => setInvoiceData({ ...invoiceData, discount_type: e.target.value as '' | 'fixed' | 'percentage' })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#195885] focus:border-transparent"
-                >
-                  <option value="">Aucune réduction</option>
-                  <option value="fixed">Montant fixe</option>
-                  <option value="percentage">Pourcentage</option>
-                </select>
-              </div>
-
-              {invoiceData.discount_type && (
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Valeur de la réduction {invoiceData.discount_type === 'percentage' ? '(%)' : '(FCFA)'}
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={invoiceData.discount_value}
-                    onChange={(e) => setInvoiceData({ ...invoiceData, discount_value: parseFloat(e.target.value) || 0 })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#195885] focus:border-transparent"
-                  />
-                </div>
-              )}
-
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-2">Condition de paiement</label>
-                <textarea
-                  value={invoiceData.payment_terms}
-                  onChange={(e) => setInvoiceData({ ...invoiceData, payment_terms: e.target.value })}
-                  rows={3}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#195885] focus:border-transparent"
-                  placeholder="Ex: Paiement à 30 jours"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Nom du responsable</label>
-                <input
-                  type="text"
-                  value={invoiceData.responsible_name}
-                  onChange={(e) => setInvoiceData({ ...invoiceData, responsible_name: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#195885] focus:border-transparent"
-                />
-              </div>
-            </div>
-
             <div>
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Récapitulatif</h3>
               <div className="bg-gray-50 rounded-lg p-6 space-y-3">
@@ -510,29 +380,9 @@ export default function CreateInvoice({ onNavigate }: CreateInvoiceProps) {
                   <span>Sous-total:</span>
                   <span className="font-semibold">{calculateSubtotal().toLocaleString()} FCFA</span>
                 </div>
-
-                {invoiceData.discount_type && (
-                  <div className="flex justify-between text-orange-600">
-                    <span>Réduction:</span>
-                    <span className="font-semibold">-{calculateDiscount().toLocaleString()} FCFA</span>
-                  </div>
-                )}
-
-                {invoiceData.apply_tax && (
-                  <div className="flex justify-between text-gray-700">
-                    <span>TVA ({invoiceData.tax_percentage}%):</span>
-                    <span className="font-semibold">{calculateTax().toLocaleString()} FCFA</span>
-                  </div>
-                )}
-
                 <div className="border-t-2 border-gray-300 pt-3 flex justify-between text-xl font-bold text-[#195885]">
                   <span>Total:</span>
                   <span>{calculateTotal().toLocaleString()} FCFA</span>
-                </div>
-
-                <div className="border-t border-gray-300 pt-3">
-                  <p className="text-sm text-gray-600 font-medium">Montant en lettres:</p>
-                  <p className="text-sm text-gray-800 mt-1 italic">{numberToWordsFrench(calculateTotal())}</p>
                 </div>
               </div>
             </div>
