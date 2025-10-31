@@ -18,6 +18,7 @@ export interface CompanySettings {
   address?: string;
   logo_url?: string;
   updated_at: string;
+  pricing_type?: string;
 }
 
 export interface Client {
