@@ -55,6 +55,7 @@ export default function CreateInvoice({ onNavigate }: CreateInvoiceProps) {
     loadSettings();
     loadClients();
     generateInvoiceNumber();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadSettings = async () => {
@@ -106,12 +107,21 @@ export default function CreateInvoice({ onNavigate }: CreateInvoiceProps) {
         client_email: client.email || '',
         client_address: client.address || ''
       }));
+    } else {
+      // clear if choose "-- Nouveau client --"
+      setInvoiceData(prev => ({
+        ...prev,
+        client_name: '',
+        client_phone: '',
+        client_email: '',
+        client_address: ''
+      }));
     }
   };
 
   const addItem = () => {
-    setItems([
-      ...items,
+    setItems(prev => [
+      ...prev,
       {
         id: Date.now().toString(),
         designation: '',
@@ -125,41 +135,46 @@ export default function CreateInvoice({ onNavigate }: CreateInvoiceProps) {
 
   const removeItem = (id: string) => {
     if (items.length > 1) {
-      setItems(items.filter(item => item.id !== id));
+      setItems(prev => prev.filter(item => item.id !== id));
     }
   };
 
-  const updateItem = (id: string, field: keyof InvoiceItem, value: string | number) => {
-    setItems(items.map(item => {
-      if (item.id === id) {
-        const updated = { ...item, [field]: value };
+  // Helper to compute total for an item given its state
+  const computeItemTotal = (it: InvoiceItem) => {
+    if (it.pricing_type === 'Offert') return 0;
+    if (it.pricing_type === 'Forfaitaire') return Number(it.unit_price) || 0;
+    // Unitaire
+    return (Number(it.quantity) || 0) * (Number(it.unit_price) || 0);
+  };
 
-        // 🔁 recalcul automatique selon le type
-        if (field === 'quantity' || field === 'unit_price' || field === 'pricing_type') {
-          if (updated.pricing_type === 'Unitaire') {
-            updated.total_amount = updated.quantity * updated.unit_price;
-          } else if (updated.pricing_type === 'Forfaitaire') {
-            updated.total_amount = updated.unit_price;
-          } else if (updated.pricing_type === 'Offert') {
-            updated.total_amount = 0;
-          }
-        }
+  const updateItem = (id: string, field: keyof InvoiceItem, value: string | number) => {
+    setItems(prev =>
+      prev.map(item => {
+        if (item.id !== id) return item;
+        const updated: InvoiceItem = { ...item, [field]: value } as InvoiceItem;
+
+        // Ensure numeric fields are numbers
+        updated.quantity = Number(updated.quantity) || 0;
+        updated.unit_price = Number(updated.unit_price) || 0;
+
+        // Recompute total_amount depending on pricing_type
+        updated.total_amount = computeItemTotal(updated);
+
         return updated;
-      }
-      return item;
-    }));
+      })
+    );
   };
 
   const calculateSubtotal = () => {
-    return items.reduce((sum, item) => sum + item.total_amount, 0);
+    return items.reduce((sum, item) => sum + (Number(item.total_amount) || 0), 0);
   };
 
   const calculateDiscount = () => {
     const subtotal = calculateSubtotal();
     if (invoiceData.discount_type === 'fixed') {
-      return invoiceData.discount_value;
+      return Number(invoiceData.discount_value) || 0;
     } else if (invoiceData.discount_type === 'percentage') {
-      return (subtotal * invoiceData.discount_value) / 100;
+      return (subtotal * (Number(invoiceData.discount_value) || 0)) / 100;
     }
     return 0;
   };
@@ -168,26 +183,50 @@ export default function CreateInvoice({ onNavigate }: CreateInvoiceProps) {
     if (!invoiceData.apply_tax) return 0;
     const subtotal = calculateSubtotal();
     const discount = calculateDiscount();
-    return ((subtotal - discount) * invoiceData.tax_percentage) / 100;
+    const taxable = Math.max(subtotal - discount, 0);
+    return (taxable * (Number(invoiceData.tax_percentage) || 0)) / 100;
   };
 
   const calculateTotal = () => {
     const subtotal = calculateSubtotal();
     const discount = calculateDiscount();
     const tax = calculateTax();
-    return subtotal - discount + tax;
+    return Math.max(subtotal - discount + tax, 0);
+  };
+
+  const validateItemsBeforeSave = () => {
+    for (const item of items) {
+      if (!item.designation || item.designation.trim().length === 0) {
+        alert('Chaque article doit avoir une désignation.');
+        return false;
+      }
+      // quantity must be positive for Unitaire and Forfaitaire (for Forfaitaire quantity may be 1 but still >0)
+      if (item.quantity <= 0) {
+        alert('La quantité de chaque article doit être supérieure à 0.');
+        return false;
+      }
+      // unit_price must be >=0, but must be >0 when Unitaire or Forfaitaire (unless you want to allow 0 priced forfait)
+      if ((item.pricing_type === 'Unitaire' || item.pricing_type === 'Forfaitaire') && item.unit_price < 0) {
+        alert('Le prix unitaire doit être supérieur ou égal à 0.');
+        return false;
+      }
+      // If unitaire/forfaitaire and price is 0 — allow but warn? We'll prevent negative only.
+      // No strict block for 0 to allow "0 FCFA" pricing if desired.
+    }
+    return true;
   };
 
   const saveInvoice = async () => {
-    if (!invoiceData.client_name || !invoiceData.client_phone) {
-      alert('Veuillez remplir les informations du client');
+    if (!invoiceData.client_name || invoiceData.client_name.trim().length === 0) {
+      alert('Veuillez remplir le nom du client');
+      return;
+    }
+    if (!invoiceData.client_phone || invoiceData.client_phone.trim().length === 0) {
+      alert('Veuillez remplir le téléphone du client');
       return;
     }
 
-    if (items.some(item => !item.designation || item.quantity <= 0 || item.unit_price < 0)) {
-      alert('Veuillez remplir tous les articles correctement');
-      return;
-    }
+    if (!validateItemsBeforeSave()) return;
 
     const subtotal = calculateSubtotal();
     const discount = calculateDiscount();
@@ -201,8 +240,8 @@ export default function CreateInvoice({ onNavigate }: CreateInvoiceProps) {
         client_id: selectedClient || null,
         client_name: invoiceData.client_name,
         client_phone: invoiceData.client_phone,
-        client_email: invoiceData.client_email,
-        client_address: invoiceData.client_address,
+        client_email: invoiceData.client_email || null,
+        client_address: invoiceData.client_address || null,
         invoice_date: invoiceData.invoice_date,
         subtotal,
         tax_percentage: invoiceData.tax_percentage,
@@ -218,6 +257,7 @@ export default function CreateInvoice({ onNavigate }: CreateInvoiceProps) {
       .single();
 
     if (invoiceError || !invoice) {
+      console.error('Error saving invoice', invoiceError);
       alert('Erreur lors de la sauvegarde de la facture');
       return;
     }
@@ -237,10 +277,12 @@ export default function CreateInvoice({ onNavigate }: CreateInvoiceProps) {
       .insert(itemsToInsert);
 
     if (itemsError) {
+      console.error('Error saving invoice items', itemsError);
       alert('Erreur lors de la sauvegarde des articles');
       return;
     }
 
+    // Optionally save client if new
     if (!selectedClient && invoiceData.client_name && invoiceData.client_phone) {
       await supabase.from('clients').insert({
         name: invoiceData.client_name,
@@ -282,7 +324,92 @@ export default function CreateInvoice({ onNavigate }: CreateInvoiceProps) {
         </div>
 
         <div className="bg-white rounded-xl shadow-md p-8">
-          {/* Table des articles */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Numéro de facture</label>
+              <input
+                type="text"
+                value={invoiceData.invoice_number}
+                onChange={(e) => setInvoiceData({ ...invoiceData, invoice_number: e.target.value })}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#195885] focus:border-transparent"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Date de facturation</label>
+              <input
+                type="date"
+                value={invoiceData.invoice_date}
+                onChange={(e) => setInvoiceData({ ...invoiceData, invoice_date: e.target.value })}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#195885] focus:border-transparent"
+              />
+            </div>
+          </div>
+
+          <div className="mb-8">
+            <h2 className="text-xl font-semibold text-gray-900 mb-4">Informations du client</h2>
+
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">Sélectionner un client existant (optionnel)</label>
+              <select
+                value={selectedClient}
+                onChange={(e) => handleClientSelect(e.target.value)}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#195885] focus:border-transparent"
+              >
+                <option value="">-- Nouveau client --</option>
+                {clients.map(client => (
+                  <option key={client.id} value={client.id}>
+                    {client.name} - {client.phone}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Nom *</label>
+                <input
+                  type="text"
+                  value={invoiceData.client_name}
+                  onChange={(e) => setInvoiceData({ ...invoiceData, client_name: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#195885] focus:border-transparent"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Téléphone *</label>
+                <input
+                  type="text"
+                  value={invoiceData.client_phone}
+                  onChange={(e) => setInvoiceData({ ...invoiceData, client_phone: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#195885] focus:border-transparent"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Email</label>
+                <input
+                  type="email"
+                  value={invoiceData.client_email}
+                  onChange={(e) => setInvoiceData({ ...invoiceData, client_email: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#195885] focus:border-transparent"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Adresse</label>
+                <input
+                  type="text"
+                  value={invoiceData.client_address}
+                  onChange={(e) => setInvoiceData({ ...invoiceData, client_address: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#195885] focus:border-transparent"
+                />
+              </div>
+            </div>
+          </div>
+
           <div className="mb-8">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-semibold text-gray-900">Articles</h2>
@@ -341,7 +468,7 @@ export default function CreateInvoice({ onNavigate }: CreateInvoiceProps) {
                       <td className="px-4 py-3">
                         <select
                           value={item.pricing_type}
-                          onChange={(e) => updateItem(item.id, 'pricing_type', e.target.value)}
+                          onChange={(e) => updateItem(item.id, 'pricing_type', e.target.value as InvoiceItem['pricing_type'])}
                           className="w-full px-2 py-1 border border-gray-300 rounded bg-white"
                         >
                           <option value="Unitaire">Unitaire</option>
@@ -352,7 +479,7 @@ export default function CreateInvoice({ onNavigate }: CreateInvoiceProps) {
                       <td className="px-4 py-3 font-semibold">
                         {item.pricing_type === 'Offert'
                           ? 'Offert'
-                          : `${item.total_amount.toLocaleString()} FCFA`}
+                          : `${Number(item.total_amount || 0).toLocaleString()} FCFA`}
                       </td>
                       <td className="px-4 py-3">
                         {items.length > 1 && (
@@ -371,8 +498,88 @@ export default function CreateInvoice({ onNavigate }: CreateInvoiceProps) {
             </div>
           </div>
 
-          {/* Récapitulatif */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Options de facturation</h3>
+
+              <div className="mb-4">
+                <label className="flex items-center">
+                  <input
+                    type="checkbox"
+                    checked={invoiceData.apply_tax}
+                    onChange={(e) => setInvoiceData({ ...invoiceData, apply_tax: e.target.checked })}
+                    className="w-4 h-4 text-[#195885] rounded focus:ring-[#195885]"
+                  />
+                  <span className="ml-2 text-sm font-medium text-gray-700">Appliquer la TVA</span>
+                </label>
+              </div>
+
+              {invoiceData.apply_tax && (
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Pourcentage TVA (%)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.01"
+                    value={invoiceData.tax_percentage}
+                    onChange={(e) => setInvoiceData({ ...invoiceData, tax_percentage: parseFloat(e.target.value) || 0 })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#195885] focus:border-transparent"
+                  />
+                </div>
+              )}
+
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">Type de réduction</label>
+                <select
+                  value={invoiceData.discount_type}
+                  onChange={(e) => setInvoiceData({ ...invoiceData, discount_type: e.target.value as '' | 'fixed' | 'percentage' })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#195885] focus:border-transparent"
+                >
+                  <option value="">Aucune réduction</option>
+                  <option value="fixed">Montant fixe</option>
+                  <option value="percentage">Pourcentage</option>
+                </select>
+              </div>
+
+              {invoiceData.discount_type && (
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Valeur de la réduction {invoiceData.discount_type === 'percentage' ? '(%)' : '(FCFA)'}
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={invoiceData.discount_value}
+                    onChange={(e) => setInvoiceData({ ...invoiceData, discount_value: parseFloat(e.target.value) || 0 })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#195885] focus:border-transparent"
+                  />
+                </div>
+              )}
+
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">Condition de paiement</label>
+                <textarea
+                  value={invoiceData.payment_terms}
+                  onChange={(e) => setInvoiceData({ ...invoiceData, payment_terms: e.target.value })}
+                  rows={3}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#195885] focus:border-transparent"
+                  placeholder="Ex: Paiement à 30 jours"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Nom du responsable</label>
+                <input
+                  type="text"
+                  value={invoiceData.responsible_name}
+                  onChange={(e) => setInvoiceData({ ...invoiceData, responsible_name: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#195885] focus:border-transparent"
+                />
+              </div>
+            </div>
+
             <div>
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Récapitulatif</h3>
               <div className="bg-gray-50 rounded-lg p-6 space-y-3">
@@ -380,9 +587,29 @@ export default function CreateInvoice({ onNavigate }: CreateInvoiceProps) {
                   <span>Sous-total:</span>
                   <span className="font-semibold">{calculateSubtotal().toLocaleString()} FCFA</span>
                 </div>
+
+                {invoiceData.discount_type && (
+                  <div className="flex justify-between text-orange-600">
+                    <span>Réduction:</span>
+                    <span className="font-semibold">-{calculateDiscount().toLocaleString()} FCFA</span>
+                  </div>
+                )}
+
+                {invoiceData.apply_tax && (
+                  <div className="flex justify-between text-gray-700">
+                    <span>TVA ({invoiceData.tax_percentage}%):</span>
+                    <span className="font-semibold">{calculateTax().toLocaleString()} FCFA</span>
+                  </div>
+                )}
+
                 <div className="border-t-2 border-gray-300 pt-3 flex justify-between text-xl font-bold text-[#195885]">
                   <span>Total:</span>
                   <span>{calculateTotal().toLocaleString()} FCFA</span>
+                </div>
+
+                <div className="border-t border-gray-300 pt-3">
+                  <p className="text-sm text-gray-600 font-medium">Montant en lettres:</p>
+                  <p className="text-sm text-gray-800 mt-1 italic">{numberToWordsFrench(calculateTotal())}</p>
                 </div>
               </div>
             </div>
