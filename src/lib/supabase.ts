@@ -18,7 +18,6 @@ export interface CompanySettings {
   address?: string;
   logo_url?: string;
   updated_at: string;
-  pricing_type?: string;
 }
 
 export interface Client {
@@ -60,4 +59,5 @@ export interface InvoiceItem {
   unit_price: number;
   total_amount: number;
   order_index: number;
+  pricing_type?: string;
 }
